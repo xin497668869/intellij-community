@@ -3,6 +3,7 @@ package git4idea.merge;
 
 import com.intellij.icons.AllIcons;
 import com.intellij.ide.util.ElementsChooser;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.diagnostic.Logger;
 import com.intellij.openapi.progress.ProgressManager;
 import com.intellij.openapi.project.Project;
@@ -33,12 +34,17 @@ import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ActionListener;
-import java.util.ArrayList;
-import java.util.Collection;
-import java.util.Collections;
-import java.util.List;
+import java.util.*;
 
 public class GitPullDialog extends DialogWrapper {
+
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_MY_NO_COMMIT_CHECK_BOX           = "GIT_ADVANCE_LAST_GIT_PULL_MY_NO_COMMIT_CHECK_BOX";
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_MY_ADD_LOG_INFORMATION_CHECK_BOX = "GIT_ADVANCE_LAST_GIT_PULL_MY_ADD_LOG_INFORMATION_CHECK_BOX";
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_MY_SQUASH_COMMIT_CHECK_BOX       = "GIT_ADVANCE_LAST_GIT_PULL_MY_SQUASH_COMMIT_CHECK_BOX";
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_MY_NO_FAST_FORWARD_CHECK_BOX     = "GIT_ADVANCE_LAST_GIT_PULL_MY_NO_FAST_FORWARD_CHECK_BOX";
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_MY_STRATEGY                      = "GIT_ADVANCE_LAST_GIT_PULL_MY_STRATEGY";
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_MARKED_BRANCHES                  = "GIT_ADVANCE_LAST_GIT_PULL_MARKED_BRANCHES";
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PULL_REMOTE                           = "GIT_ADVANCE_LAST_GIT_PULL_REMOTE";
 
   private static final Logger LOG = Logger.getInstance(GitPullDialog.class);
 
@@ -61,6 +67,8 @@ public class GitPullDialog extends DialogWrapper {
     super(project, true);
     setTitle(GitBundle.getString("pull.title"));
     myProject = project;
+    PropertiesComponent instance = PropertiesComponent.getInstance(myProject);
+
     myRepositoryManager = GitUtil.getRepositoryManager(myProject);
     myGit = Git.getInstance();
 
@@ -79,6 +87,8 @@ public class GitPullDialog extends DialogWrapper {
       @Override
       public void actionPerformed(ActionEvent e) {
         updateBranches();
+        myGetBranchesButton.doClick();
+        initMarkBranchs(instance);
       }
     });
     final ElementsChooser.ElementsMarkListener<String> listener = new ElementsChooser.ElementsMarkListener<String>() {
@@ -94,7 +104,46 @@ public class GitPullDialog extends DialogWrapper {
     GitUIUtil.exclusive(mySquashCommitCheckBox, true, myNoFastForwardCheckBox, true);
     GitMergeUtil.setupStrategies(myBranchChooser, myStrategy);
     init();
+    initLastSelect(instance);
   }
+
+  public void initLastSelect(PropertiesComponent instance) {
+
+    myNoCommitCheckBox.setSelected(instance.getBoolean(GIT_ADVANCE_LAST_GIT_PULL_MY_NO_COMMIT_CHECK_BOX, myNoCommitCheckBox.isSelected()));
+    myNoFastForwardCheckBox.setSelected(instance.getBoolean(GIT_ADVANCE_LAST_GIT_PULL_MY_NO_FAST_FORWARD_CHECK_BOX, myNoFastForwardCheckBox.isSelected()));
+    mySquashCommitCheckBox.setSelected(instance.getBoolean(GIT_ADVANCE_LAST_GIT_PULL_MY_SQUASH_COMMIT_CHECK_BOX, mySquashCommitCheckBox.isSelected()));
+    myAddLogInformationCheckBox.setSelected(instance.getBoolean(GIT_ADVANCE_LAST_GIT_PULL_MY_ADD_LOG_INFORMATION_CHECK_BOX, myAddLogInformationCheckBox.isSelected()));
+    for (int i = 0; i < myStrategy.getItemCount(); i++) {
+      if (String.valueOf(myStrategy.getItemAt(i)).equals(instance.getValue(GIT_ADVANCE_LAST_GIT_PULL_MY_STRATEGY, String.valueOf(myStrategy.getSelectedItem())))) {
+        myStrategy.setSelectedIndex(i);
+        break;
+      }
+    }
+    for (int i = 0; i < myRemote.getItemCount(); i++) {
+      if (((GitRemote) myRemote.getItemAt(i)).getName().equals(instance.getValue(GIT_ADVANCE_LAST_GIT_PULL_REMOTE))) {
+        myRemote.setSelectedIndex(i);
+        break;
+      }
+    }
+  }
+  public boolean initMarkBranchs(PropertiesComponent instance) {
+    String[] markedBranches = instance.getValue(GIT_ADVANCE_LAST_GIT_PULL_MARKED_BRANCHES, String.join(",", myBranchChooser.getMarkedElements())).split(",");
+    List<String> defaultSelectedElements = myBranchChooser.getMarkedElements();
+    myBranchChooser.setAllElementsMarked(false);
+    myBranchChooser.selectElements(Arrays.asList(markedBranches));
+    for (String markedBranch : markedBranches) {
+      try {
+        myBranchChooser.setElementMarked(markedBranch, true);
+      } catch (ArrayIndexOutOfBoundsException e) {
+        for (String defaultSelectedElement : defaultSelectedElements) {
+          myBranchChooser.setElementMarked(defaultSelectedElement, true);
+        }
+        return true;
+      }
+    }
+    return false;
+  }
+
 
   private void setupGetBranches() {
     myGetBranchesButton.setIcon(AllIcons.Actions.Refresh);
@@ -160,40 +209,48 @@ public class GitPullDialog extends DialogWrapper {
   }
 
   public GitLineHandler makeHandler(@NotNull List<String> urls) {
+    PropertiesComponent instance = PropertiesComponent.getInstance(myProject);
     GitLineHandler h = new GitLineHandler(myProject, gitRoot(), GitCommand.PULL);
     h.setUrls(urls);
-    if(GitVersionSpecialty.ABLE_TO_USE_PROGRESS_IN_REMOTE_COMMANDS.existsIn(myProject)) {
+    if (GitVersionSpecialty.ABLE_TO_USE_PROGRESS_IN_REMOTE_COMMANDS.existsIn(myProject)) {
       h.addParameters("--progress");
     }
     h.addParameters("--no-stat");
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MY_NO_COMMIT_CHECK_BOX, myNoCommitCheckBox.isSelected());
     if (myNoCommitCheckBox.isSelected()) {
       h.addParameters("--no-commit");
-    }
-    else {
+    } else {
+      instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MY_ADD_LOG_INFORMATION_CHECK_BOX, myAddLogInformationCheckBox.isSelected());
       if (myAddLogInformationCheckBox.isSelected()) {
         h.addParameters("--log");
       }
     }
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MY_SQUASH_COMMIT_CHECK_BOX, mySquashCommitCheckBox.isSelected());
     if (mySquashCommitCheckBox.isSelected()) {
       h.addParameters("--squash");
     }
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MY_NO_FAST_FORWARD_CHECK_BOX, myNoFastForwardCheckBox.isSelected());
     if (myNoFastForwardCheckBox.isSelected()) {
       h.addParameters("--no-ff");
     }
-    String strategy = (String)myStrategy.getSelectedItem();
+    String strategy = (String) myStrategy.getSelectedItem();
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MY_STRATEGY, strategy);
     if (!GitMergeUtil.DEFAULT_STRATEGY.equals(strategy)) {
       h.addParameters("--strategy", strategy);
     }
     h.addParameters("-v");
-    if(GitVersionSpecialty.ABLE_TO_USE_PROGRESS_IN_REMOTE_COMMANDS.existsIn(myProject)) {
+    if (GitVersionSpecialty.ABLE_TO_USE_PROGRESS_IN_REMOTE_COMMANDS.existsIn(myProject)) {
       h.addParameters("--progress");
     }
 
     final List<String> markedBranches = myBranchChooser.getMarkedElements();
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MARKED_BRANCHES, String.join(",", markedBranches));
     String remote = getRemote();
     LOG.assertTrue(remote != null, "Selected remote can't be null here.");
     // git pull origin master (remote branch name in the format local to that remote)
     h.addParameters(remote);
+
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_REMOTE, remote);
     for (String branch : markedBranches) {
       h.addParameters(removeRemotePrefix(branch, remote));
     }

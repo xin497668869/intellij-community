@@ -16,8 +16,10 @@
 package git4idea.push;
 
 import com.intellij.dvcs.push.PushSpec;
+import com.intellij.dvcs.push.PushTarget;
 import com.intellij.dvcs.push.Pusher;
 import com.intellij.dvcs.push.VcsPushOptionValue;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.NotificationsManager;
 import com.intellij.openapi.project.Project;
@@ -25,12 +27,15 @@ import git4idea.GitUtil;
 import git4idea.config.GitVcsSettings;
 import git4idea.repo.GitRepository;
 import git4idea.repo.GitRepositoryManager;
+import gnu.trove.THashMap;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 
 class GitPusher extends Pusher<GitRepository, GitPushSource, GitPushTarget> {
+
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PUSH_BRANCH                  = "GIT_ADVANCE_LAST_GIT_PUSH_BRANCH";
 
   @NotNull private final Project myProject;
   @NotNull private final GitVcsSettings mySettings;
@@ -63,6 +68,15 @@ class GitPusher extends Pusher<GitRepository, GitPushSource, GitPushTarget> {
     GitPushResultNotification notification = GitPushResultNotification.create(myProject, result, myRepositoryManager.moreThanOneRoot());
     notification.notify(myProject);
     mySettings.setPushTagMode(pushTagMode);
+
+    PropertiesComponent instance = PropertiesComponent.getInstance(myProject);
+    PushSpec pushSpec = (PushSpec) ((THashMap) pushSpecs).values().toArray()[0];
+
+    PushTarget target = pushSpec.getTarget();
+    if(target instanceof GitPushTarget) {
+      GitPushTarget gitPushTarget = (GitPushTarget) target;
+      instance.setValue(GIT_ADVANCE_LAST_GIT_PUSH_BRANCH, gitPushTarget.getBranch().getName());
+    }
   }
 
   protected void expireExistingErrorsAndWarnings() {
