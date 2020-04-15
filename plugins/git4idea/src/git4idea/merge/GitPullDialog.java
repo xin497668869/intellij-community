@@ -246,10 +246,13 @@ public class GitPullDialog extends DialogWrapper {
     }
 
     final List<String> markedBranches = getSelectedBranches();
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_MARKED_BRANCHES, String.join(",", markedBranches));
     String remote = getRemote();
     LOG.assertTrue(remote != null, "Selected remote can't be null here.");
     // git pull origin master (remote branch name in the format local to that remote)
     h.addParameters(remote);
+
+    instance.setValue(GIT_ADVANCE_LAST_GIT_PULL_REMOTE, remote);
     for (String branch : markedBranches) {
       h.addParameters(removeRemotePrefix(branch, remote));
     }
