@@ -3,9 +3,12 @@ package git4idea.push;
 
 import com.intellij.dvcs.push.*;
 import com.intellij.dvcs.repo.RepositoryManager;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.openapi.components.ServiceManager;
 import com.intellij.openapi.project.Project;
 import com.intellij.openapi.vcs.AbstractVcs;
+import com.intellij.util.ObjectUtils;
+import com.intellij.vcs.log.Hash;
 import git4idea.GitLocalBranch;
 import git4idea.GitRemoteBranch;
 import git4idea.GitStandardRemoteBranch;
@@ -18,12 +21,13 @@ import git4idea.repo.*;
 import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Objects;
+import java.util.Map;
 
 import static git4idea.GitUtil.findRemoteBranch;
 import static git4idea.GitUtil.getDefaultOrFirstRemote;
 
 public class GitPushSupport extends PushSupport<GitRepository, GitPushSource, GitPushTarget> {
+  public static final  String                  GIT_ADVANCE_LAST_GIT_PUSH_BRANCH                  = "GIT_ADVANCE_LAST_GIT_PUSH_BRANCH";
 
   @NotNull private final GitRepositoryManager myRepositoryManager;
   @NotNull private final GitVcs myVcs;
@@ -66,6 +70,16 @@ public class GitPushSupport extends PushSupport<GitRepository, GitPushSource, Gi
   @Nullable
   @Override
   public GitPushTarget getDefaultTarget(@NotNull GitRepository repository) {
+    PropertiesComponent instance = PropertiesComponent.getInstance(repository.getProject());
+    if (!instance.getValue(GIT_ADVANCE_LAST_GIT_PUSH_BRANCH, "").isEmpty()) {
+
+      Map<GitRemoteBranch, Hash> remoteBranchesWithHashes = repository.getInfo().getRemoteBranchesWithHashes();
+      for (GitRemoteBranch gitRemoteBranch : remoteBranchesWithHashes.keySet()) {
+        if (gitRemoteBranch.getName().equals(instance.getValue(GIT_ADVANCE_LAST_GIT_PUSH_BRANCH))) {
+          return new GitPushTarget(gitRemoteBranch, false);
+        }
+      }
+    }
     if (repository.isFresh()) {
       return null;
     }
@@ -122,7 +136,7 @@ public class GitPushSupport extends PushSupport<GitRepository, GitPushSource, Gi
     GitLocalBranch currentBranch = repository.getCurrentBranch();
     return currentBranch != null
            ? GitPushSource.create(currentBranch)
-           : GitPushSource.create(Objects.requireNonNull(repository.getCurrentRevision())); // fresh repository is on branch
+           : GitPushSource.create(ObjectUtils.assertNotNull(repository.getCurrentRevision())); // fresh repository is on branch
   }
 
   @NotNull

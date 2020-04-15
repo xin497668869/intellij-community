@@ -18,6 +18,7 @@ package git4idea.push;
 import com.intellij.dvcs.push.PushSpec;
 import com.intellij.dvcs.push.Pusher;
 import com.intellij.dvcs.push.VcsPushOptionValue;
+import com.intellij.ide.util.PropertiesComponent;
 import com.intellij.notification.NotificationType;
 import com.intellij.notification.NotificationsManager;
 import com.intellij.openapi.application.ApplicationManager;
@@ -32,7 +33,10 @@ import org.jetbrains.annotations.Nullable;
 
 import java.util.Map;
 
+import static git4idea.push.GitPushSupport.GIT_ADVANCE_LAST_GIT_PUSH_BRANCH;
+
 class GitPusher extends Pusher<GitRepository, GitPushSource, GitPushTarget> {
+
 
   @NotNull private final Project myProject;
   @NotNull private final GitVcsSettings mySettings;
@@ -62,20 +66,12 @@ class GitPusher extends Pusher<GitRepository, GitPushSource, GitPushTarget> {
 
     GitPushOperation pushOperation = new GitPushOperation(myProject, myPushSupport, pushSpecs, pushTagMode, force, skipHook);
     pushAndNotify(myProject, pushOperation);
-  }
 
-  public static void pushAndNotify(@NotNull Project project, @NotNull GitPushOperation pushOperation) {
-    GitPushResult pushResult = pushOperation.execute();
-
-    Map<GitRepository, HashRange> updatedRanges = pushResult.getUpdatedRanges();
-    GitUpdateInfoAsLog.NotificationData notificationData = !updatedRanges.isEmpty() ?
-                                                           new GitUpdateInfoAsLog(project, updatedRanges).calculateDataAndCreateLogTab() :
-                                                           null;
-
-    ApplicationManager.getApplication().invokeLater(() -> {
-      boolean multiRepoProject = GitUtil.getRepositoryManager(project).moreThanOneRoot();
-      GitPushResultNotification.create(project, pushResult, pushOperation, multiRepoProject, notificationData).notify(project);
-    });
+    PropertiesComponent instance = PropertiesComponent.getInstance(myProject);
+    for (PushSpec<GitPushSource, GitPushTarget> value : pushSpecs.values()) {
+      GitPushTarget gitPushTarget = value.getTarget();
+      instance.setValue(GIT_ADVANCE_LAST_GIT_PUSH_BRANCH, gitPushTarget.getBranch().getName());
+    }
   }
 
   protected void expireExistingErrorsAndWarnings() {
@@ -86,5 +82,21 @@ class GitPusher extends Pusher<GitRepository, GitPushSource, GitPushTarget> {
         notification.expire();
       }
     }
+  }
+
+  public static void pushAndNotify(@NotNull Project project, @NotNull GitPushOperation pushOperation) {
+    GitPushResult pushResult = pushOperation.execute();
+
+
+    Map<GitRepository, HashRange> updatedRanges = pushResult.getUpdatedRanges();
+    GitUpdateInfoAsLog.NotificationData notificationData = !updatedRanges.isEmpty() ?
+                                                           new GitUpdateInfoAsLog(project, updatedRanges).calculateDataAndCreateLogTab() :
+                                                           null;
+
+
+    ApplicationManager.getApplication().invokeLater(() -> {
+      boolean multiRepoProject = GitUtil.getRepositoryManager(project).moreThanOneRoot();
+      GitPushResultNotification.create(project, pushResult, pushOperation, multiRepoProject, notificationData).notify(project);
+    });
   }
 }
